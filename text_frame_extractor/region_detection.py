@@ -1,32 +1,41 @@
 import cv2
 import numpy as np
+from dataclasses import dataclass
+from typing import List
+
+from .occlusion_masking import OcclusionMasker
+
+
+@dataclass
+class DetectedRegion:
+    """Representation of a detected region."""
+
+    polygon: np.ndarray  # Nx2 array of integer coordinates
+    score: float
 
 class RegionDetector:
-    """Detect target reading region."""
+    """Detect target reading region and return scored polygons."""
 
-    def detect(self, frame):
-        """Detect the main document region in the frame using a robust approach focusing on rectangular shapes.
-        This version uses bilateral filtering, adaptive thresholding, and a scoring system for contour selection.
+    def __init__(self, max_regions: int = 3):
+        self.max_regions = max_regions
+        self.masker = OcclusionMasker()
+
+    def detect(self, frame) -> List[DetectedRegion]:
+        """Detect document-like regions in ``frame``.
+
+        The returned list is ordered by descending score and contains at most
+        ``max_regions`` elements.
         """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Bilateral filter for noise reduction while preserving edges
-        blurred = cv2.bilateralFilter(gray, 9, 75, 75)
 
-        # Apply adaptive thresholding
-        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY_INV, 11, 2)
+        # Simple binary threshold to separate foreground from background
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # Morphological operations to clean up the image
-        kernel = np.ones((3,3), np.uint8)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+        # Find contours of connected components
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Find contours
-        contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        
-        best_bbox = None
-        max_score = -1.0 # Using a scoring system to find the best candidate
+        mask = self.masker.mask(frame)
+        candidates: List[DetectedRegion] = []
 
         height, width = frame.shape[:2]
         frame_area = height * width
@@ -36,49 +45,34 @@ class RegionDetector:
             peri = cv2.arcLength(c, True)
             approx = cv2.approxPolyDP(c, 0.02 * peri, True)
 
-            # Only consider contours with 4 vertices (potential rectangles)
-            if len(approx) == 4:
-                area = cv2.contourArea(approx)
+            area = cv2.contourArea(approx)
+            if area < frame_area * 0.01 or area > frame_area * 0.99:
+                continue
 
-                # Filter by area: ignore very small or very large contours
-                if area < frame_area * 0.01 or area > frame_area * 0.99: 
-                    continue
+            x, y, w, h = cv2.boundingRect(approx)
+            if w == 0 or h == 0:
+                continue
+            aspect_ratio = float(w) / h
+            if not (0.3 < aspect_ratio < 3.0):
+                continue
 
-                # Calculate bounding box and aspect ratio
-                x, y, w, h = cv2.boundingRect(approx)
-                if w == 0 or h == 0:
-                    continue
-                aspect_ratio = float(w) / h
+            hull = cv2.convexHull(c)
+            hull_area = cv2.contourArea(hull)
+            if hull_area == 0:
+                continue
+            solidity = float(area) / hull_area
+            if solidity < 0.7:
+                continue
 
-                # Filter by aspect ratio (typical for book pages, allowing for some tilt)
-                # A wider range to be more forgiving, but still prioritize closer to 1.0
-                if not (0.3 < aspect_ratio < 3.0): 
-                    continue
+            coverage = np.mean(mask[y : y + h, x : x + w] / 255.0)
+            score = (area * solidity / (abs(1.0 - aspect_ratio) + 0.1)) * coverage
 
-                # Filter by solidity (how "solid" the object is)
-                hull = cv2.convexHull(c)
-                hull_area = cv2.contourArea(hull)
-                if hull_area == 0:
-                    continue
-                solidity = float(area) / hull_area
-                if solidity < 0.7: # Adjust threshold for solidity
-                    continue
+            polygon = approx.reshape(-1, 2).astype(int)
+            candidates.append(DetectedRegion(polygon=polygon, score=float(score)))
 
-                # Check for convexity
-                if not cv2.isContourConvex(approx):
-                    continue
+        if not candidates:
+            full_poly = np.array([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
+            return [DetectedRegion(polygon=full_poly, score=0.0)]
 
-                # Calculate a score for the candidate
-                # Prioritize larger area, higher solidity, and aspect ratio closer to 1.0
-                # The 0.1 is added to the denominator to prevent division by zero if aspect_ratio is exactly 1.0
-                score = area * solidity / (abs(1.0 - aspect_ratio) + 0.1)
-
-                if score > max_score:
-                    max_score = score
-                    best_bbox = (x, y, w, h)
-
-        if best_bbox:
-            return best_bbox
-        else:
-            # Fallback: if no suitable region is found, return the full frame
-            return (0, 0, width, height)
+        candidates.sort(key=lambda r: r.score, reverse=True)
+        return candidates[: self.max_regions]

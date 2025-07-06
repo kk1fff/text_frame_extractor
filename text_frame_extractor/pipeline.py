@@ -28,8 +28,9 @@ def process_frames(frames: List[np.ndarray]) -> Tuple[np.ndarray, str, float]:
     aligned_frames = []
     masks = []
     for frame in selected:
-        bbox = detector.detect(frame)
-        aligned = aligner.align(frame, bbox)
+        regions = detector.detect(frame)
+        region = regions[0]
+        aligned = aligner.align(frame, region.polygon)
         mask = masker.mask(aligned)
         aligned_frames.append(aligned)
         masks.append(mask)

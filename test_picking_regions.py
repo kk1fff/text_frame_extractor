@@ -6,7 +6,6 @@ import argparse
 # Assuming these classes are available in the text_frame_extractor package
 # We'll need to adjust imports if this script is not run from the root directory
 from text_frame_extractor.region_detection import RegionDetector
-from text_frame_extractor.alignment import FrameAligner
 
 def process_video_frames(video_path: str, output_dir: str, max_frames: int = -1):
     """
@@ -41,13 +40,15 @@ def process_video_frames(video_path: str, output_dir: str, max_frames: int = -1)
         white_canvas = np.full((height, width, 3), 255, dtype=np.uint8)
 
         # Detect the region of interest
-        x, y, w, h = region_detector.detect(frame)
+        regions = region_detector.detect(frame)
 
-        # Extract the detected region from the original frame
-        detected_region = frame[y : y + h, x : x + w]
-
-        # Paste the detected region onto the white canvas
-        white_canvas[y : y + h, x : x + w] = detected_region
+        for region in regions:
+            poly = np.asarray(region.polygon, dtype=np.int32)
+            x, y, w, h = cv2.boundingRect(poly)
+            detected_region = frame[y : y + h, x : x + w]
+            white_canvas[y : y + h, x : x + w] = detected_region
+            cv2.polylines(white_canvas, [poly], True, (0, 255, 0), 2)
+            print(f"Frame {frame_count} region score: {region.score:.2f}")
 
         # Construct output filename
         output_filename = os.path.join(output_dir, f"{video_name}_{frame_count:04d}.jpg")
