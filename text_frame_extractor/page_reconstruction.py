@@ -60,6 +60,9 @@ class PageReconstructor:
                     h, w, _ = reference_frame.shape
                     warped_frame = cv2.warpPerspective(frame, M, (w, h))
                     aligned_frames.append(warped_frame)
+                    continue
+            # If not enough matches or homography fails, append frame as-is
+            aligned_frames.append(frame)
         return aligned_frames
 
     def _calculate_sharpness_map(self, image):
