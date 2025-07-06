@@ -238,3 +238,21 @@ These are quality, operational, and usability requirements that the system must 
 | Quality Scoring                         | All outputs              | Quality score                         |
 | Final Output                            | Reconstructed + text     | Ready-to-use content                  |
 
+
+## Running the Example
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+sudo apt-get update && sudo apt-get install -y tesseract-ocr
+```
+
+Run the pipeline on a video file:
+
+```bash
+python main.py input.mp4 output.jpg
+```
+
+The reconstructed image will be saved to `output.jpg` and extracted text and quality score will be printed to the console.
+
