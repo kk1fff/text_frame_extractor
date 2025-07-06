@@ -68,40 +68,39 @@ class PageReconstructor:
         """
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # Apply Gaussian blur to reduce noise before calculating Laplacian
-        blurred_gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        blurred_gray = cv2.GaussianBlur(gray, (7, 7), 0)
         laplacian = cv2.Laplacian(blurred_gray, cv2.CV_64F)
-        # Use the squared Laplacian directly for sharpness
-        sharpness = laplacian**2
+        # Use the variance of the Laplacian for sharpness over a small window
+        sharpness = cv2.filter2D(laplacian**2, -1, np.ones((3,3), np.float32)/9.0)
         return sharpness
 
     def _build_composite(self, frames):
         """
         Builds a composite image by selecting the sharpest pixel from all frames.
         """
-        reference_frame = frames[0]
-        composite_image = np.zeros_like(reference_frame, dtype=np.uint8)
-        sharpness_map = np.full(reference_frame.shape[:2], -np.inf, dtype=np.float64)
+        if not frames:
+            return None, None
 
-        for frame in frames:
-            
-            # Create a mask for non-black pixels (valid content) in the current frame
-            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            valid_pixels_mask = gray_frame > 5  # Changed threshold from 0 to 5
+        # Calculate sharpness maps for all frames
+        sharpness_maps = np.array([self._calculate_sharpness_map(frame) for frame in frames])
 
-            current_sharpness = self._calculate_sharpness_map(frame)
-            
-            # Only consider valid pixels for sharpness comparison
-            comparison_mask = (current_sharpness > sharpness_map) & valid_pixels_mask
-            
-            # Update the composite image and the sharpness map
-            for c in range(3):
-                composite_image[:,:,c][comparison_mask] = frame[:,:,c][comparison_mask]
-            
-            sharpness_map[comparison_mask] = current_sharpness[comparison_mask]
+        # Find the index of the frame with the maximum sharpness for each pixel
+        best_frame_indices = np.argmax(sharpness_maps, axis=0)
 
-        return composite_image, sharpness_map
+        # Initialize composite image
+        composite_image = np.zeros_like(frames[0], dtype=np.uint8)
 
-    def _selective_sharpen(self, image, sharpness_map, blur_threshold=5):
+        # Construct the composite image by picking pixels from the best frame
+        for i in range(frames[0].shape[0]):
+            for j in range(frames[0].shape[1]):
+                best_frame_idx = best_frame_indices[i, j]
+                composite_image[i, j] = frames[best_frame_idx][i, j]
+
+        # Recalculate the sharpness map for the final composite image
+        final_sharpness_map = self._calculate_sharpness_map(composite_image)
+        return composite_image, final_sharpness_map
+
+    def _selective_sharpen(self, image, sharpness_map, blur_threshold=50):
         """
         Applies a sharpening filter only to blurry regions of the image.
         """
@@ -119,7 +118,7 @@ class PageReconstructor:
         # Combine the original image with the sharpened regions
         final_image = image.copy()
         # Expand the mask slightly to blend the edges
-        blur_mask = cv2.dilate(blur_mask, np.ones((1,1), np.uint8), iterations=1)
+        blur_mask = cv2.dilate(blur_mask, np.ones((3,3), np.uint8), iterations=1)
         
         for c in range(3):
             final_image[:,:,c] = np.where(blur_mask == 1, sharpened_image[:,:,c], final_image[:,:,c])
