@@ -7,10 +7,18 @@ class FrameAligner:
         self.output_size = output_size
 
     def align(self, frame, polygon):
-        """Crop the frame using the bounding box of ``polygon``."""
-        polygon = np.asarray(polygon, dtype=np.int32)
-        x, y, w, h = cv2.boundingRect(polygon)
-        cropped = frame[y : y + h, x : x + w]
+        """Crop the frame using the bounding box of ``polygon``.
+        
+        If polygon is None, return the entire frame.
+        """
+        if polygon is None:
+            # Use the entire frame
+            aligned = frame.copy()
+        else:
+            polygon = np.asarray(polygon, dtype=np.int32)
+            x, y, w, h = cv2.boundingRect(polygon)
+            aligned = frame[y : y + h, x : x + w]
+            
         if self.output_size is not None:
-            cropped = cv2.resize(cropped, self.output_size)
-        return cropped
+            aligned = cv2.resize(aligned, self.output_size)
+        return aligned

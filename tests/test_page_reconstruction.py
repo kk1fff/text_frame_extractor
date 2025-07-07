@@ -7,6 +7,10 @@ def create_text_image(text: str, shape=(100, 200, 3)) -> np.ndarray:
     cv2.putText(img, text, (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2, cv2.LINE_AA)
     return img
 
+def create_mask(shape=(100, 200)) -> np.ndarray:
+    """Create a mask that covers the entire image."""
+    return np.ones(shape, dtype=np.uint8)
+
 def test_best_pixel_selection():
     """ 
     Tests that the reconstructor correctly selects the sharper pixels.
@@ -16,9 +20,14 @@ def test_best_pixel_selection():
     # Create a sharp and a blurry version of the same image
     sharp_frame = create_text_image("Sharp Text")
     blurry_frame = cv2.GaussianBlur(sharp_frame, (25, 25), 0)
+    
+    # Create masks for both frames
+    sharp_mask = create_mask(sharp_frame.shape[:2])
+    blurry_mask = create_mask(blurry_frame.shape[:2])
 
     # The reconstructor should pick the pixels from the sharp frame
-    result = reconstructor.reconstruct([blurry_frame, sharp_frame])
+    frame_mask_pairs = [(blurry_frame, blurry_mask), (sharp_frame, sharp_mask)]
+    result = reconstructor.reconstruct(frame_mask_pairs)
 
     # The result should be much closer to the sharp frame than the blurry one
     sharp_diff = np.sum(cv2.absdiff(result, sharp_frame))
