@@ -7,6 +7,7 @@ import numpy as np
 from .frame_selection import FrameSelector
 from .region_detection import RegionDetector
 from .page_reconstruction import PageReconstructor
+from .advanced_page_reconstruction import AdvancedPageReconstructor
 from .region_stitching import RegionStitcher
 from .ocr import OCR
 from .text_structure import TextStructureAnalyzer
@@ -31,11 +32,18 @@ def _save_debug_frame_mask_pair(frame: np.ndarray, mask: np.ndarray, output_path
     cv2.imwrite(output_path, debug_frame)
 
 
-def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_output_dir: str = "local.debug") -> Tuple[np.ndarray, str, float]:
+def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_output_dir: str = "local.debug", 
+                  use_advanced_reconstruction: bool = True) -> Tuple[np.ndarray, str, float]:
     """Process frames and return reconstructed image, text, and quality score."""
     selector = FrameSelector()
     detector = RegionDetector()
-    reconstructor = PageReconstructor()
+    
+    # Choose reconstruction algorithm
+    if use_advanced_reconstruction:
+        reconstructor = AdvancedPageReconstructor()
+    else:
+        reconstructor = PageReconstructor()
+        
     stitcher = RegionStitcher()
     ocr = OCR()
     analyzer = TextStructureAnalyzer()
@@ -60,14 +68,15 @@ def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_out
                 _save_debug_frame_mask_pair(frame, mask, debug_path, debug_idx)
                 debug_idx += 1
 
-    reconstructed = reconstructor.reconstruct(frame_mask_pairs)
+    reconstructed = reconstructor.reconstruct(frame_mask_pairs, debug_mode=debug_mode)
     text = ocr.extract_text(reconstructed)
     structured_text = analyzer.analyze(text)
     score = scorer.score(reconstructed)
     return reconstructed, structured_text, score
 
 
-def process_video(video_path: str, debug_mode: bool = False, debug_output_dir: str = "local.debug") -> Tuple[np.ndarray, str, float]:
+def process_video(video_path: str, debug_mode: bool = False, debug_output_dir: str = "local.debug", 
+                 use_advanced_reconstruction: bool = True) -> Tuple[np.ndarray, str, float]:
     cap = cv2.VideoCapture(video_path)
     frames = []
     success, frame = cap.read()
@@ -75,4 +84,4 @@ def process_video(video_path: str, debug_mode: bool = False, debug_output_dir: s
         frames.append(frame)
         success, frame = cap.read()
     cap.release()
-    return process_frames(frames, debug_mode, debug_output_dir)
+    return process_frames(frames, debug_mode, debug_output_dir, use_advanced_reconstruction)
