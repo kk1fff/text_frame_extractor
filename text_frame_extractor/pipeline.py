@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 from .frame_selection import FrameSelector
+from .advanced_frame_selection import AdvancedFrameSelector
 from .region_detection import RegionDetector
 from .page_reconstruction import PageReconstructor
 from .advanced_page_reconstruction import AdvancedPageReconstructor
@@ -33,9 +34,15 @@ def _save_debug_frame_mask_pair(frame: np.ndarray, mask: np.ndarray, output_path
 
 
 def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_output_dir: str = "local.debug", 
-                  use_advanced_reconstruction: bool = True) -> Tuple[np.ndarray, str, float]:
+                  use_advanced_reconstruction: bool = True, use_advanced_frame_selection: bool = True) -> Tuple[np.ndarray, str, float]:
     """Process frames and return reconstructed image, text, and quality score."""
-    selector = FrameSelector()
+    
+    # Choose frame selection algorithm
+    if use_advanced_frame_selection:
+        selector = AdvancedFrameSelector()
+    else:
+        selector = FrameSelector()
+        
     detector = RegionDetector()
     
     # Choose reconstruction algorithm
@@ -52,7 +59,7 @@ def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_out
     if debug_mode:
         os.makedirs(debug_output_dir, exist_ok=True)
 
-    selected = selector.select(frames)
+    selected = selector.select(frames, debug_mode=debug_mode)
     frame_mask_pairs = []
     debug_idx = 0
     for frame in selected:
@@ -76,7 +83,7 @@ def process_frames(frames: List[np.ndarray], debug_mode: bool = False, debug_out
 
 
 def process_video(video_path: str, debug_mode: bool = False, debug_output_dir: str = "local.debug", 
-                 use_advanced_reconstruction: bool = True) -> Tuple[np.ndarray, str, float]:
+                 use_advanced_reconstruction: bool = True, use_advanced_frame_selection: bool = True) -> Tuple[np.ndarray, str, float]:
     cap = cv2.VideoCapture(video_path)
     frames = []
     success, frame = cap.read()
@@ -84,4 +91,4 @@ def process_video(video_path: str, debug_mode: bool = False, debug_output_dir: s
         frames.append(frame)
         success, frame = cap.read()
     cap.release()
-    return process_frames(frames, debug_mode, debug_output_dir, use_advanced_reconstruction)
+    return process_frames(frames, debug_mode, debug_output_dir, use_advanced_reconstruction, use_advanced_frame_selection)

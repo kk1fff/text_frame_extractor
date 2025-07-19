@@ -7,7 +7,7 @@ class FrameSelector:
     def __init__(self, top_n: int = 5):
         self.top_n = top_n
 
-    def select(self, frames):
+    def select(self, frames, debug_mode: bool = False):
         """Return the top-N sharpest frames."""
         if len(frames) <= self.top_n:
             return frames
@@ -18,4 +18,8 @@ class FrameSelector:
             variance = cv2.Laplacian(gray, cv2.CV_64F).var()
             scores.append(variance)
         indices = np.argsort(scores)[::-1][: self.top_n]
+        
+        if debug_mode:
+            print(f"Simple frame selection: selected {len(indices)} frames from {len(frames)} based on sharpness")
+            
         return [frames[i] for i in indices]
